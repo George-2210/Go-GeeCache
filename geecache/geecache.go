@@ -11,6 +11,7 @@ type Group struct {
 	name      string
 	getter    Getter
 	mainCache cache
+	peers     PeerPicker
 }
 
 // Getter 负责为指定的键加载数据
@@ -62,14 +63,31 @@ func (g *Group) Get(key string) (ByteView, error) {
 	}
 
 	if v, ok := g.mainCache.get(key); ok {
-		log.Println("[GeeCache] 命中缓存")
+		log.Println("[GeeCache] hit")
 		return v, nil
 	}
 
 	return g.load(key)
 }
 
+// RegisterPeers 用于注册一个 PeerPicker，用于选择远程节点。
+func (g *Group) RegisterPeers(peers PeerPicker) {
+	if g.peers != nil {
+		panic("RegisterPeerPicker called more than once")
+	}
+	g.peers = peers
+}
+
 func (g *Group) load(key string) (value ByteView, err error) {
+	if g.peers != nil {
+		if peer, ok := g.peers.PickPeer(key); ok {
+			if value, err = g.getFromPeer(peer, key); err == nil {
+				return value, nil
+			}
+			log.Println("[GeeCache] Failed to get from peer", err)
+		}
+	}
+
 	return g.getLocally(key)
 }
 
@@ -86,4 +104,12 @@ func (g *Group) getLocally(key string) (ByteView, error) {
 
 func (g *Group) populateCache(key string, value ByteView) {
 	g.mainCache.add(key, value)
+}
+
+func (g *Group) getFromPeer(peer PeerGetter, key string) (ByteView, error) {
+	bytes, err := peer.Get(g.name, key)
+	if err != nil {
+		return ByteView{}, err
+	}
+	return ByteView{b: bytes}, nil
 }
