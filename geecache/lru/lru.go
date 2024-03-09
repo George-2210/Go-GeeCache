@@ -1,6 +1,8 @@
 package lru
 
-import "container/list"
+import (
+	"container/list"
+)
 
 type Cache struct {
 	maxBytes  int64
@@ -11,8 +13,9 @@ type Cache struct {
 }
 
 type entry struct {
-	key   string
-	value Value
+	key        string
+	value      Value
+	expiration int64 // 过期时间的 Unix() 时间戳
 }
 
 type Value interface {
@@ -29,17 +32,17 @@ func New(maxBytes int64, onEvicted func(key string, value Value)) *Cache {
 }
 
 // 查找
-func (c *Cache) Get(key string) (value Value, ok bool) {
+func (c *Cache) Get(key string) (value Value, expirationm int64, ok bool) {
 	if ele, ok := c.cache[key]; ok {
 		c.ll.MoveToFront(ele)
 		kv := ele.Value.(*entry)
-		return kv.value, true
+		return kv.value, kv.expiration, ok
 
 	}
 	return
 }
 
-//删除
+// 删除
 func (c *Cache) RemoveOldest() {
 	ele := c.ll.Back()
 	if ele != nil {
@@ -53,8 +56,20 @@ func (c *Cache) RemoveOldest() {
 	}
 }
 
+func (c *Cache) RemoveKey(key string) {
+	if ele, ok := c.cache[key]; ok {
+		c.ll.Remove(ele)
+		kv := ele.Value.(*entry)
+		delete(c.cache, key)
+		c.nbytes -= int64(len(key)) + int64(kv.value.Len())
+		if c.OnEvicted != nil {
+			c.OnEvicted(key, kv.value)
+		}
+	}
+}
+
 // 新增/修改
-func (c *Cache) Add(key string, value Value) {
+func (c *Cache) Add(key string, value Value, expiration int64) {
 	if ele, ok := c.cache[key]; ok {
 		c.ll.MoveToFront(ele)
 		kv := ele.Value.(*entry)
@@ -65,13 +80,14 @@ func (c *Cache) Add(key string, value Value) {
 		}
 
 		kv.value = value
+		kv.expiration = expiration
 	} else {
 		c.nbytes += int64(len(key)) + int64(value.Len())
 		for c.maxBytes != 0 && c.maxBytes < c.nbytes {
 			c.RemoveOldest()
 		}
 
-		ele := c.ll.PushFront(&entry{key, value})
+		ele := c.ll.PushFront(&entry{key, value, expiration})
 		c.cache[key] = ele
 	}
 }

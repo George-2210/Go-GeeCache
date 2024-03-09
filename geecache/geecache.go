@@ -2,6 +2,8 @@ package geecache
 
 import (
 	"fmt"
+	"time"
+
 	// pb "geecache/geecachepb"
 	"geecache/singleflight"
 	"log"
@@ -45,7 +47,7 @@ func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
 	g := &Group{
 		name:      name,
 		getter:    getter,
-		mainCache: cache{cacheBytes: cacheBytes},
+		mainCache: cache{cacheBytes: cacheBytes, expiration: 5 * time.Minute},
 		loader:    &singleflight.Group{},
 	}
 	groups[name] = g

@@ -3,11 +3,13 @@ package geecache
 import (
 	"geecache/lru"
 	"sync"
+	"time"
 )
 
 type cache struct {
 	mu         sync.Mutex
 	lru        *lru.Cache
+	expiration time.Duration // TTL
 	cacheBytes int64
 }
 
@@ -17,7 +19,7 @@ func (c *cache) add(key string, value ByteView) {
 	if c.lru == nil {
 		c.lru = lru.New(c.cacheBytes, nil)
 	}
-	c.lru.Add(key, value)
+	c.lru.Add(key, value, time.Now().Add(c.expiration).Unix())
 }
 
 func (c *cache) get(key string) (value ByteView, ok bool) {
@@ -27,9 +29,12 @@ func (c *cache) get(key string) (value ByteView, ok bool) {
 		return
 	}
 
-	if v, ok := c.lru.Get(key); ok {
-		return v.(ByteView), ok
+	if v, t, ok := c.lru.Get(key); ok {
+		if time.Now().Unix() > t { // 过期
+			c.lru.RemoveKey(key)
+		} else {
+			return v.(ByteView), ok
+		}
 	}
-
 	return
 }
