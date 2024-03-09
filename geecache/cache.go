@@ -2,6 +2,7 @@ package geecache
 
 import (
 	"geecache/lru"
+	"log"
 	"sync"
 	"time"
 )
@@ -32,6 +33,7 @@ func (c *cache) get(key string) (value ByteView, ok bool) {
 	if v, t, ok := c.lru.Get(key); ok {
 		if time.Now().Unix() > t { // 过期
 			c.lru.RemoveKey(key)
+			log.Println("Data has expired")
 		} else {
 			return v.(ByteView), ok
 		}
